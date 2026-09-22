@@ -26,9 +26,8 @@ charly secrets get charly/api-key qdrant   # the generated admin key
 charly check run check-qdrant-pod
 ```
 
-The bed asserts the pod reaches steady state, REST `/readyz` answers, the admin
-key is ENFORCED (unauth rejected / auth accepted), and the full management flow
-works: collection create → list → info → exists, point upsert → count → query →
-get → scroll → delete, snapshot create → list → delete — through the verb and
-re-read through the `charly qdrant` CLI. Baked candy checks cover readiness, the
-service, and the auth boundary.
+The bed asserts the pod reaches steady state and the full management flow
+(collection create → list → info → exists → delete; point upsert → count → query
+→ get → scroll → delete; snapshot create → list → delete; the `charly qdrant` CLI
+parity steps; and persistence across a fresh `charly update`). The composed
+candy's baked checks cover the service, `/readyz`, and the admin-key boundary.

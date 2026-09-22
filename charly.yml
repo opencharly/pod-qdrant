@@ -42,8 +42,11 @@ check-qdrant-pod:
               exit_status: 0
               stdout:
                 - contains: check-qdrant-pod
-            # (the service-running / /readyz / auth boundary are the composed
-            #  layer-qdrant candy's baked checks — not re-declared here, per R3.)
+            # (service-running + /readyz are the composed layer-qdrant candy's
+            #  baked checks, not re-declared here per R3. The qdrant-verb-auth
+            #  step below is NOT a re-assert of those: it exercises the plugin's
+            #  `auth-required` METHOD — a different surface from the candy's
+            #  curl-based qdrant-auth-enforced check.)
             # --- verb: health + version (Go client over the reverse channel) ---
             - check: 'the qdrant: health verb passes (Go client, host side)'
               id: qdrant-verb-health
@@ -61,7 +64,8 @@ check-qdrant-pod:
                 method: version
               stdout:
                 - contains: qdrant
-            # --- verb: auth boundary (the admin key is enforced) ---
+            # --- verb: the auth-required METHOD (plugin surface; distinct from
+            #     the candy's baked curl-based auth-enforced check) ---
             - check: 'the qdrant: auth-required verb proves an unauthenticated client is rejected'
               id: qdrant-verb-auth
               context:
