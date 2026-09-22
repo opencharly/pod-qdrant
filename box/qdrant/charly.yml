@@ -1,0 +1,40 @@
+# The qdrant BOX — the image composing the qdrant service layer + the external
+# `plugin-qdrant` command/verb candy onto the upstream fedora:43 base.
+# Build: `charly box build qdrant`.  Deploy: `charly config qdrant`.
+# The bed (check-qdrant-pod) deploys this image and drives it through BOTH the
+# `qdrant:` check verb and the `charly qdrant` CLI (R3 parity), exercising the
+# full capability surface (collections, points, snapshots, auth).
+qdrant:
+    candy:
+        base: quay.io/fedora/fedora:43
+        # The distro tag chain is load-bearing: the package resolver walks the
+        # IMAGE's declared chain most-specific-first, so a box that declares
+        # `base:` alone matches no per-distro section and would silently install
+        # nothing (the dsh-app / docs-site-app precedent).
+        distro:
+            - fedora:43
+            - fedora
+        description: |-
+            The qdrant vector-search image (Fedora 43): composes the qdrant
+            service layer (pinned static-musl release binary, supervisord service
+            on REST 6333 + gRPC 6334, persistent ~/.qdrant volume, admin API-key
+            auth from the credential store) with the external
+            command:qdrant + verb:qdrant plugin (plugin-qdrant). Deploy it with
+            `charly config qdrant`; probe it with `charly check run
+            check-qdrant-pod`.
+        candy:
+            - '@github.com/opencharly/layer-qdrant:v2026.265.2042'
+            - '@github.com/opencharly/plugin-qdrant/candy/plugin-qdrant:v2026.265.2042'
+        plan:
+            - # ADE: the composed image ships the qdrant runtime (deterministic
+              # build-context check; the live service/auth/verb surfaces are the
+              # check-qdrant-pod bed's job).
+              check: the qdrant binary is installed in the composed image
+              id: qdrant-box-binary
+              file:
+                file: /usr/local/bin/qdrant
+            - check: the qdrant binary reports its version
+              id: qdrant-box-version
+              command: /usr/local/bin/qdrant --version
+              stdout:
+                - contains: "1.19.1"
