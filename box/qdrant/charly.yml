@@ -25,3 +25,16 @@ qdrant:
         candy:
             - '@github.com/opencharly/layer-qdrant:v2026.265.2042'
             - '@github.com/opencharly/plugin-qdrant/candy/plugin-qdrant:v2026.265.2042'
+        plan:
+            - # ADE: the composed image ships the qdrant runtime (deterministic
+              # build-context check; the live service/auth/verb surfaces are the
+              # check-qdrant-pod bed's job).
+              check: the qdrant binary is installed in the composed image
+              id: qdrant-box-binary
+              file:
+                file: /usr/local/bin/qdrant
+            - check: the qdrant binary reports its version
+              id: qdrant-box-version
+              command: /usr/local/bin/qdrant --version
+              stdout:
+                - contains: "1.19.1"

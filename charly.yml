@@ -31,7 +31,7 @@ check-qdrant-pod:
             service, and the auth boundary; this bed adds the management-flow
             claims.
         plan:
-            # --- steady state + auth boundary (candy-baked checks re-assert these) ---
+            # --- steady state ---
             - check: the qdrant pod reached steady state
               id: qdrant-pod-running
               context:
@@ -42,20 +42,8 @@ check-qdrant-pod:
               exit_status: 0
               stdout:
                 - contains: check-qdrant-pod
-            - check: the qdrant service is running under the init system
-              id: qdrant-service-running
-              context:
-                - runtime
-              service:
-                service: qdrant
-                running: true
-            - check: the REST API answers /readyz
-              id: qdrant-readyz
-              context:
-                - runtime
-              http:
-                http: "http://127.0.0.1:${HOST_PORT:6333}/readyz"
-                status: 200
+            # (the service-running / /readyz / auth boundary are the composed
+            #  layer-qdrant candy's baked checks — not re-declared here, per R3.)
             # --- verb: health + version (Go client over the reverse channel) ---
             - check: 'the qdrant: health verb passes (Go client, host side)'
               id: qdrant-verb-health
