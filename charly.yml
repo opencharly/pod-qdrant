@@ -1,0 +1,315 @@
+version: 2026.249.2125
+defaults:
+    platform:
+        - linux/amd64
+    tag: auto
+    registry: ghcr.io/opencharly
+    build:
+        - rpm
+discover:
+    - path: box
+      recursive: true
+# pod-qdrant — the qdrant vector-search image (box/qdrant) plus the
+# check-qdrant-pod disposable R10 bed. The box composes the qdrant service layer
+# (layer-qdrant) and the external command:qdrant + verb:qdrant plugin
+# (plugin-qdrant); the bed proves the whole stack, driving the FULL qdrant
+# capability surface through the `qdrant:` check verb and the `charly qdrant`
+# CLI from charly.yml alone.
+check-qdrant-pod:
+    pod:
+        image: qdrant
+        disposable: true
+        lifecycle: dev
+        description: >-
+            Sole proof the qdrant image composes and serves end-to-end: REST 6333
+            + gRPC 6334, admin API-key auth ENFORCED, and the FULL capability
+            surface driven through BOTH the declarative `qdrant:` check verb
+            (host-based, official Go client over the reverse channel) and the
+            `charly qdrant` CLI (R3 parity) from charly.yml alone — create/read
+            collection, upsert/query/scroll/count/get/delete points, and
+            snapshot create/list/delete. Baked candy checks cover readiness, the
+            service, and the auth boundary; this bed adds the management-flow
+            claims.
+        plan:
+            # --- steady state + auth boundary (candy-baked checks re-assert these) ---
+            - check: the qdrant pod reached steady state
+              id: qdrant-pod-running
+              context:
+                - runtime
+              command:
+                command: ${CHARLY_BIN} status --json
+                in_container: false
+              exit_status: 0
+              stdout:
+                - contains: check-qdrant-pod
+            - check: the qdrant service is running under the init system
+              id: qdrant-service-running
+              context:
+                - runtime
+              service:
+                service: qdrant
+                running: true
+            - check: the REST API answers /readyz
+              id: qdrant-readyz
+              context:
+                - runtime
+              http:
+                http: "http://127.0.0.1:${HOST_PORT:6333}/readyz"
+                status: 200
+            # --- verb: health + version (Go client over the reverse channel) ---
+            - check: 'the qdrant: health verb passes (Go client, host side)'
+              id: qdrant-verb-health
+              context:
+                - runtime
+              qdrant:
+                method: health
+              stdout:
+                - contains: healthy
+            - check: 'the qdrant: version verb passes'
+              id: qdrant-verb-version
+              context:
+                - runtime
+              qdrant:
+                method: version
+              stdout:
+                - contains: qdrant
+            # --- verb: auth boundary (the admin key is enforced) ---
+            - check: 'the qdrant: auth-required verb proves an unauthenticated client is rejected'
+              id: qdrant-verb-auth
+              context:
+                - runtime
+              qdrant:
+                method: auth-required
+              stdout:
+                - contains: rejected
+            # --- verb: collection CRUD ---
+            - check: 'the qdrant: collection-create verb creates the demo collection'
+              id: qdrant-verb-collection-create
+              context:
+                - runtime
+              qdrant:
+                method: collection-create
+                collection: charly_demo
+                size: 4
+                distance: cosine
+              stdout:
+                - contains: charly_demo
+            - check: 'the qdrant: collections-list verb lists the created collection'
+              id: qdrant-verb-collections-list
+              context:
+                - runtime
+              qdrant:
+                method: collections-list
+              stdout:
+                - contains: charly_demo
+            - check: 'the qdrant: collection-info verb reports the collection'
+              id: qdrant-verb-collection-info
+              context:
+                - runtime
+              qdrant:
+                method: collection-info
+                collection: charly_demo
+              stdout:
+                - contains: "vector_size=4"
+            - check: 'the qdrant: collection-exists verb asserts existence'
+              id: qdrant-verb-collection-exists
+              context:
+                - runtime
+              qdrant:
+                method: collection-exists
+                collection: charly_demo
+              stdout:
+                - contains: exists
+            # --- verb: collection-delete (on a throwaway collection, so charly_demo stays for the persistence check) ---
+            - check: 'the qdrant: collection-create verb creates a throwaway collection'
+              id: qdrant-verb-collection-create-scratch
+              context:
+                - runtime
+              qdrant:
+                method: collection-create
+                collection: charly_scratch
+                size: 4
+                distance: cosine
+              stdout:
+                - contains: charly_scratch
+            - check: 'the qdrant: collection-delete verb deletes the throwaway collection'
+              id: qdrant-verb-collection-delete
+              context:
+                - runtime
+              qdrant:
+                method: collection-delete
+                collection: charly_scratch
+              stdout:
+                - contains: deleted collection charly_scratch
+            # --- verb: point upsert / count / query / get / scroll / delete ---
+            - check: 'the qdrant: points-upsert verb inserts two points with payload'
+              id: qdrant-verb-points-upsert-1
+              context:
+                - runtime
+              qdrant:
+                method: points-upsert
+                collection: charly_demo
+                id: 1
+                vector: [0.05, 0.61, 0.76, 0.74]
+                payload:
+                    city: London
+              stdout:
+                - contains: "point 1"
+            - check: 'the qdrant: points-upsert verb inserts a second point'
+              id: qdrant-verb-points-upsert-2
+              context:
+                - runtime
+              qdrant:
+                method: points-upsert
+                collection: charly_demo
+                id: 2
+                vector: [0.19, 0.81, 0.75, 0.11]
+                payload:
+                    city: Berlin
+            - check: 'the qdrant: points-count verb reports two points'
+              id: qdrant-verb-points-count
+              context:
+                - runtime
+              qdrant:
+                method: points-count
+                collection: charly_demo
+              stdout:
+                - contains: "2 point"
+            - check: 'the qdrant: points-query verb returns the nearest neighbour'
+              id: qdrant-verb-points-query
+              context:
+                - runtime
+              qdrant:
+                method: points-query
+                collection: charly_demo
+                vector: [0.2, 0.1, 0.9, 0.7]
+                limit: 5
+              stdout:
+                - contains: "result"
+            - check: 'the qdrant: points-get verb fetches point 1 by id'
+              id: qdrant-verb-points-get
+              context:
+                - runtime
+              qdrant:
+                method: points-get
+                collection: charly_demo
+                id: 1
+              stdout:
+                - contains: London
+            - check: 'the qdrant: points-scroll verb reads the points back'
+              id: qdrant-verb-points-scroll
+              context:
+                - runtime
+              qdrant:
+                method: points-scroll
+                collection: charly_demo
+              stdout:
+                - contains: "point(s)"
+            - check: 'the qdrant: points-delete verb removes point 2'
+              id: qdrant-verb-points-delete
+              context:
+                - runtime
+              qdrant:
+                method: points-delete
+                collection: charly_demo
+                id: 2
+              stdout:
+                - contains: "deleted point 2"
+            # --- verb: snapshots ---
+            - check: 'the qdrant: snapshot-create verb snapshots the collection'
+              id: qdrant-verb-snapshot-create
+              context:
+                - runtime
+              qdrant:
+                method: snapshot-create
+                collection: charly_demo
+              stdout:
+                - contains: created snapshot
+            - check: 'the qdrant: snapshot-list verb lists the snapshot'
+              id: qdrant-verb-snapshot-list
+              context:
+                - runtime
+              qdrant:
+                method: snapshot-list
+                collection: charly_demo
+              stdout:
+                - contains: "snapshot(s)"
+            - check: 'the qdrant: snapshot-delete verb removes the newest snapshot'
+              id: qdrant-verb-snapshot-delete
+              context:
+                - runtime
+              qdrant:
+                method: snapshot-delete
+                collection: charly_demo
+              stdout:
+                - contains: deleted snapshot
+            # --- CLI parity: the external `charly qdrant` CLI reaches the same server ---
+            - check: the charly qdrant CLI reaches the live server and reports the version (R3 parity)
+              id: qdrant-cli-version
+              context:
+                - runtime
+              command:
+                command: >-
+                    ${CHARLY_BIN} qdrant version
+                    --host http://127.0.0.1:${HOST_PORT:6333}
+                    --grpc-port ${HOST_PORT:6334}
+                    --api-key "$(${CHARLY_BIN} secrets get charly/api-key qdrant)"
+                in_container: false
+              exit_status: 0
+              stdout:
+                - contains: qdrant
+            - check: the charly qdrant CLI telemetry command reaches the REST leg
+              id: qdrant-cli-telemetry
+              context:
+                - runtime
+              command:
+                command: >-
+                    ${CHARLY_BIN} qdrant telemetry
+                    --host http://127.0.0.1:${HOST_PORT:6333}
+                    --api-key "$(${CHARLY_BIN} secrets get charly/api-key qdrant)"
+                in_container: false
+              exit_status: 0
+              stdout:
+                - contains: result
+            - check: the charly qdrant CLI metrics command reaches the REST leg
+              id: qdrant-cli-metrics
+              context:
+                - runtime
+              command:
+                command: >-
+                    ${CHARLY_BIN} qdrant metrics
+                    --host http://127.0.0.1:${HOST_PORT:6333}
+                    --api-key "$(${CHARLY_BIN} secrets get charly/api-key qdrant)"
+                in_container: false
+              exit_status: 0
+              stdout:
+                - contains: qdrant
+            - check: the charly qdrant CLI lists the collection the verb created (R3 parity)
+              id: qdrant-cli-collections-list
+              context:
+                - runtime
+              command:
+                command: >-
+                    ${CHARLY_BIN} qdrant collections list
+                    --host http://127.0.0.1:${HOST_PORT:6333}
+                    --grpc-port ${HOST_PORT:6334}
+                    --api-key "$(${CHARLY_BIN} secrets get charly/api-key qdrant)"
+                in_container: false
+              exit_status: 0
+              stdout:
+                - contains: charly_demo
+            # --- persistence across a fresh update ---
+            - check: the created collection and its point survive a fresh charly update (the ~/.qdrant volume)
+              id: qdrant-persist-after-update
+              context:
+                - runtime
+              command:
+                command: >-
+                    ${CHARLY_BIN} qdrant points count charly_demo
+                    --host http://127.0.0.1:${HOST_PORT:6333}
+                    --grpc-port ${HOST_PORT:6334}
+                    --api-key "$(${CHARLY_BIN} secrets get charly/api-key qdrant)"
+                in_container: false
+              exit_status: 0
+              stdout:
+                - contains: "1 point"
