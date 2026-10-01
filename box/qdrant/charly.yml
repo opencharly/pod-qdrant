@@ -23,8 +23,8 @@ qdrant:
             `charly config qdrant`; probe it with `charly check run
             check-qdrant-pod`.
         candy:
-            - '@github.com/opencharly/layer-qdrant:v2026.265.2042'
-            - '@github.com/opencharly/plugin-qdrant/candy/plugin-qdrant:v2026.265.2042'
+            - '@github.com/opencharly/layer-qdrant:v2026.272.0431'
+            - '@github.com/opencharly/plugin-qdrant/candy/plugin-qdrant:v2026.272.0431'
         plan:
             - # ADE: the composed image ships the qdrant runtime (deterministic
               # build-context check; the live service/auth/verb surfaces are the
